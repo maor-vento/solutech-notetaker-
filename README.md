@@ -69,11 +69,40 @@ paste link / calendar event
   `RECALL_TRANSCRIPT_PROVIDER` to one of Recall's AI providers (e.g.
   `assembly_ai_async`) — billed per hour through Recall.
 
-## Deploying (for calendar auto-join to work while your Mac is closed)
+## Team login
+
+The portal requires sign-in with a Solutech Google account, using the **same
+Supabase project as the time-tracking app** (defaults baked into
+`lib/config.js`). Each teammate's transcripts go to *their own* inbox.
+One-time setup: add the notetaker's URL(s) — `http://localhost:3999` and the
+deployed URL — under Supabase → Authentication → URL Configuration →
+Redirect URLs. `AUTH_DISABLED=true` turns the gate off for local hacking.
+
+## Work AI intel pipeline
+
+With `INTEL_WEBHOOK_URL` + `INTEL_SECRET` set, finished transcripts are POSTed
+to the time-tracking app's `notetaker-intel-background` Netlify function
+instead of being emailed directly. That function (see the solutech-time-tracking
+repo) summarizes the call, extracts work items into the **Work AI tab**
+(same dedup keys as the nightly digest), **Slack-DMs each item's owner
+immediately**, and emails the requester a summary + full transcript.
+If the webhook is unreachable after 3 attempts, the notetaker falls back to
+its own plain transcript email, so nothing is ever lost.
+
+Netlify needs these env vars for the function: `NOTETAKER_SECRET` (same value
+as `INTEL_SECRET` here), `RESEND_API_KEY`, optionally `NOTETAKER_EMAIL_FROM`.
+It reuses the existing `SUPABASE_SERVICE_ROLE`, `ANTHROPIC_API_KEY`,
+`SLACK_BOT_TOKEN`, and `SLACK_SIGNING_SECRET`.
+
+## Deploying (Render — so the team can use it and calendar auto-join works 24/7)
 
 The app is a single small Node server with a JSON file for state — it runs
-anywhere Node 18+ runs (Railway, Fly.io, Render, a $5 VPS). Set the same env
-vars, and update the Google OAuth redirect URI to the deployed hostname.
+anywhere Node 18+ runs. On Render: New → Web Service → connect the GitHub
+repo → build `npm install`, start `npm start`, then set the env vars from
+`.env` (Render provides `PORT` automatically). Afterwards add the Render URL
+to Supabase's auth redirect URLs, and update the Google OAuth redirect URI to
+the deployed hostname if calendar auto-join is used. Note: the free tier
+sleeps on idle, which breaks mid-call polling — use the $7/mo Starter tier.
 
 ## Costs
 

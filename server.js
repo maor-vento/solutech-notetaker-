@@ -5,6 +5,7 @@ const store = require('./lib/store');
 const recall = require('./lib/recall');
 const poller = require('./lib/poller');
 const calendar = require('./lib/calendar');
+const { requireUser } = require('./lib/auth');
 
 const app = express();
 app.use(express.json());
@@ -16,16 +17,20 @@ app.get('/api/config', (req, res) => {
     resendConfigured: config.resendConfigured(),
     googleConfigured: config.googleConfigured(),
     calendarConnected: calendar.isConnected(),
+    intelConfigured: config.intelConfigured(),
+    authEnabled: config.auth.enabled,
+    supabaseUrl: config.auth.supabaseUrl,
+    supabaseAnonKey: config.auth.anonKey,
     emailTo: config.resend.to,
     botName: config.botName,
   });
 });
 
-app.get('/api/meetings', (req, res) => {
+app.get('/api/meetings', requireUser, (req, res) => {
   res.json(store.listMeetings());
 });
 
-app.post('/api/meetings', async (req, res) => {
+app.post('/api/meetings', requireUser, async (req, res) => {
   try {
     const url = String(req.body?.meeting_url || '').trim();
     if (!/^https:\/\//i.test(url)) {
@@ -42,6 +47,7 @@ app.post('/api/meetings', async (req, res) => {
       platform,
       title: req.body?.title?.trim() || null,
       source: 'manual',
+      requestedBy: req.userEmail,
       status: 'joining_call',
       createdAt: new Date().toISOString(),
     });

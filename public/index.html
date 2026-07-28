@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solutech Notetaker</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg: #0b0f1a; --panel: #121829; --panel2: #1a2138; --border: #232c47;
@@ -16,7 +17,7 @@
     background: var(--bg); color: var(--text); min-height: 100vh; padding: 40px 20px;
   }
   .wrap { max-width: 720px; margin: 0 auto; }
-  header { margin-bottom: 28px; }
+  header { margin-bottom: 28px; position: relative; }
   .brand-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
   .brand { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent2); font-weight: 700; }
   .logo-mark { width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0; position: relative;
@@ -27,6 +28,10 @@
   body.has-logo .logo-mark { display: none; }
   h1 { font-size: 26px; margin-top: 6px; }
   h1 span { color: var(--muted); font-weight: 400; }
+  .user-chip { position: absolute; top: 0; right: 0; display: none; align-items: center; gap: 10px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 6px 8px 6px 14px; font-size: 12.5px; color: var(--muted); }
+  .user-chip button { background: var(--panel2); color: var(--muted); padding: 5px 10px; font-size: 12px; border-radius: 999px; }
+  .user-chip button:hover { color: var(--text); background: var(--panel2); }
   .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 18px; }
   .setup { border-color: #4a3a12; background: #1c1707; }
   .setup h3 { color: var(--amber); font-size: 14px; margin-bottom: 8px; }
@@ -62,6 +67,10 @@
   .cal-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .cal-row p { font-size: 13px; color: var(--muted); }
   a { color: var(--accent2); }
+  .gate { text-align: center; padding: 44px 24px; }
+  .gate h2 { color: var(--text); font-size: 18px; margin: 0 0 8px; }
+  .gate p { color: var(--muted); font-size: 13.5px; margin-bottom: 22px; }
+  .gate button { padding: 12px 26px; }
 </style>
 </head>
 <body>
@@ -74,31 +83,44 @@
       <div class="brand">Solutech</div>
     </div>
     <h1>Notetaker <span>— call transcripts to your inbox</span></h1>
+    <div class="user-chip" id="user-chip">
+      <span id="user-email"></span>
+      <button id="signout-btn" type="button">Sign out</button>
+    </div>
   </header>
 
-  <div id="setup" class="card setup" style="display:none">
-    <h3>⚠ Setup needed</h3>
-    <ul id="setup-list"></ul>
+  <div class="card gate" id="login-gate" style="display:none">
+    <h2>Team sign-in</h2>
+    <p>Use your Solutech Google account — the same login as the time-tracking portal.</p>
+    <button id="signin-btn" type="button">Sign in with Google</button>
+    <div class="error" id="login-error"></div>
   </div>
 
-  <div class="card">
-    <form id="join-form">
-      <input type="url" id="url" placeholder="Paste a Google Meet or Zoom link…" required>
-      <input type="text" id="title" placeholder="Title (optional)" style="max-width:180px">
-      <button type="submit" id="join-btn">Send bot</button>
-    </form>
-    <div class="hint">The bot joins as “<span id="bot-name">Solutech Notetaker</span>” — admit it like any guest.
-      When the call ends, the transcript is emailed to <strong id="email-to">…</strong>.</div>
-    <div class="error" id="form-error"></div>
-  </div>
+  <div id="app-main" style="display:none">
+    <div id="setup" class="card setup" style="display:none">
+      <h3>⚠ Setup needed</h3>
+      <ul id="setup-list"></ul>
+    </div>
 
-  <div class="card cal-row" id="cal-card">
-    <p id="cal-status">Calendar auto-join: checking…</p>
-    <button id="cal-btn" style="display:none">Connect Google Calendar</button>
-  </div>
+    <div class="card">
+      <form id="join-form">
+        <input type="url" id="url" placeholder="Paste a Google Meet or Zoom link…" required>
+        <input type="text" id="title" placeholder="Title (optional)" style="max-width:180px">
+        <button type="submit" id="join-btn">Send bot</button>
+      </form>
+      <div class="hint">The bot joins as “<span id="bot-name">Solutech Notetaker</span>” — admit it like any guest.
+        When the call ends, the transcript is emailed to <strong id="email-to">…</strong><span id="intel-hint"></span>.</div>
+      <div class="error" id="form-error"></div>
+    </div>
 
-  <h2>Meetings</h2>
-  <div id="meetings"><div class="empty">No meetings yet — paste a link above.</div></div>
+    <div class="card cal-row" id="cal-card">
+      <p id="cal-status">Calendar auto-join: checking…</p>
+      <button id="cal-btn" style="display:none">Connect Google Calendar</button>
+    </div>
+
+    <h2>Meetings</h2>
+    <div id="meetings"><div class="empty">No meetings yet — paste a link above.</div></div>
+  </div>
 </div>
 
 <script>
@@ -113,18 +135,51 @@ const STATUS = {
   done:                 ['Processing transcript', 'b-active'],
   processing_transcript:['Processing transcript', 'b-active'],
   emailed:              ['✓ Transcript emailed', 'b-done'],
+  intel_sent:           ['✓ Emailed + Work AI', 'b-done'],
   failed:               ['Failed', 'b-fail'],
   no_transcript:        ['No transcript', 'b-fail'],
 };
 
-async function loadConfig() {
-  const c = await (await fetch('/api/config')).json();
-  document.getElementById('email-to').textContent = c.emailTo;
-  document.getElementById('bot-name').textContent = c.botName;
+let CFG = null, sbc = null, session = null;
 
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function authHeaders() { return session ? { Authorization: 'Bearer ' + session.access_token } : {}; }
+function signedIn() { return CFG && (!CFG.authEnabled || !!session); }
+
+async function init() {
+  CFG = await (await fetch('/api/config')).json();
+  document.getElementById('bot-name').textContent = CFG.botName;
+  if (CFG.authEnabled && window.supabase) {
+    sbc = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
+    session = (await sbc.auth.getSession()).data.session;
+    sbc.auth.onAuthStateChange((_e, s) => { session = s; render(); });
+  } else if (CFG.authEnabled) {
+    document.getElementById('login-error').textContent = 'Could not load the sign-in library — check your connection.';
+  }
+  render();
+  setInterval(() => { if (signedIn()) loadMeetings(); }, 5000);
+  setInterval(() => { if (signedIn()) loadStatusCards(); }, 30000);
+}
+
+function render() {
+  document.getElementById('login-gate').style.display = signedIn() ? 'none' : 'block';
+  document.getElementById('app-main').style.display = signedIn() ? 'block' : 'none';
+  const chip = document.getElementById('user-chip');
+  if (session) {
+    chip.style.display = 'flex';
+    document.getElementById('user-email').textContent = session.user.email;
+  } else chip.style.display = 'none';
+  document.getElementById('email-to').textContent = session ? session.user.email : (CFG ? CFG.emailTo : '…');
+  document.getElementById('intel-hint').textContent =
+    CFG && CFG.intelConfigured ? ' — and work items land in the portal’s Work AI tab with Slack pings to their owners' : '';
+  if (signedIn()) { loadStatusCards(); loadMeetings(); }
+}
+
+async function loadStatusCards() {
+  CFG = await (await fetch('/api/config')).json();
   const problems = [];
-  if (!c.recallConfigured) problems.push('Add <code>RECALL_API_KEY</code> to <code>.env</code> (sign up at recall.ai) and restart.');
-  if (!c.resendConfigured) problems.push('Add <code>RESEND_API_KEY</code> to <code>.env</code> (sign up at resend.com) and restart.');
+  if (!CFG.recallConfigured) problems.push('Add <code>RECALL_API_KEY</code> to <code>.env</code> (sign up at recall.ai) and restart.');
+  if (!CFG.resendConfigured && !CFG.intelConfigured) problems.push('Add <code>RESEND_API_KEY</code> to <code>.env</code> (sign up at resend.com) and restart.');
   const setup = document.getElementById('setup');
   if (problems.length) {
     setup.style.display = 'block';
@@ -133,9 +188,10 @@ async function loadConfig() {
 
   const calStatus = document.getElementById('cal-status');
   const calBtn = document.getElementById('cal-btn');
-  if (!c.googleConfigured) {
+  if (!CFG.googleConfigured) {
     calStatus.innerHTML = 'Calendar auto-join: off — add Google OAuth keys to <code>.env</code> to enable (see README).';
-  } else if (!c.calendarConnected) {
+    calBtn.style.display = 'none';
+  } else if (!CFG.calendarConnected) {
     calStatus.textContent = 'Calendar auto-join: ready to connect.';
     calBtn.style.display = 'block';
     calBtn.onclick = async () => {
@@ -149,7 +205,9 @@ async function loadConfig() {
 }
 
 async function loadMeetings() {
-  const meetings = await (await fetch('/api/meetings')).json();
+  const res = await fetch('/api/meetings', { headers: authHeaders() });
+  if (!res.ok) return;
+  const meetings = await res.json();
   const el = document.getElementById('meetings');
   if (!meetings.length) {
     el.innerHTML = '<div class="empty">No meetings yet — paste a link above.</div>';
@@ -159,10 +217,11 @@ async function loadMeetings() {
     const [label, cls] = STATUS[m.status] || [m.status, 'b-active'];
     const when = new Date(m.createdAt).toLocaleString();
     const platform = m.platform === 'zoom' ? 'Zoom' : 'Google Meet';
+    const by = m.requestedBy ? ` · by ${esc(m.requestedBy.split('@')[0])}` : '';
     return `<div class="card meeting">
       <div class="m-info">
         <div class="m-title">${m.title ? esc(m.title) : platform + ' call'}</div>
-        <div class="m-sub">${platform} · ${m.source === 'calendar' ? 'from calendar' : 'manual'} · ${when}</div>
+        <div class="m-sub">${platform} · ${m.source === 'calendar' ? 'from calendar' : 'manual'}${by} · ${when}</div>
         ${m.error && (m.status === 'failed' || m.status === 'no_transcript') ? `<div class="m-err">${esc(m.error)}</div>` : ''}
       </div>
       <span class="badge ${cls}">${label}</span>
@@ -170,7 +229,15 @@ async function loadMeetings() {
   }).join('');
 }
 
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+document.getElementById('signin-btn').addEventListener('click', async () => {
+  const { error } = await sbc.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin },
+  });
+  if (error) document.getElementById('login-error').textContent = error.message;
+});
+
+document.getElementById('signout-btn').addEventListener('click', () => sbc.auth.signOut());
 
 document.getElementById('join-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -181,7 +248,7 @@ document.getElementById('join-form').addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/meetings', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         meeting_url: document.getElementById('url').value,
         title: document.getElementById('title').value,
@@ -199,10 +266,7 @@ document.getElementById('join-form').addEventListener('submit', async (e) => {
   }
 });
 
-loadConfig();
-loadMeetings();
-setInterval(loadMeetings, 5000);
-setInterval(loadConfig, 30000);
+init();
 </script>
 </body>
 </html>
