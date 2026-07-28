@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solutech Notetaker</title>
+<style>
+  :root {
+    --bg: #0b0f1a; --panel: #121829; --panel2: #1a2138; --border: #232c47;
+    --text: #e7eaf3; --muted: #8b93ab; --accent: #6366f1; --accent2: #818cf8;
+    --green: #34d399; --red: #f87171; --amber: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh; padding: 40px 20px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  header { margin-bottom: 28px; }
+  .brand { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent2); font-weight: 700; }
+  h1 { font-size: 26px; margin-top: 6px; }
+  h1 span { color: var(--muted); font-weight: 400; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 18px; }
+  .setup { border-color: #4a3a12; background: #1c1707; }
+  .setup h3 { color: var(--amber); font-size: 14px; margin-bottom: 8px; }
+  .setup li { color: var(--muted); font-size: 13px; margin: 4px 0 4px 18px; }
+  .setup code { color: var(--text); background: var(--panel2); padding: 1px 6px; border-radius: 5px; }
+  form { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type=url], input[type=text] {
+    flex: 1; min-width: 220px; background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); padding: 12px 14px; font-size: 14px; outline: none;
+  }
+  input:focus { border-color: var(--accent); }
+  button {
+    background: var(--accent); color: #fff; border: 0; border-radius: 10px;
+    padding: 12px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: var(--accent2); }
+  button:disabled { opacity: .5; cursor: default; }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 10px; line-height: 1.5; }
+  .error { color: var(--red); font-size: 13px; margin-top: 10px; }
+  h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 26px 0 12px; }
+  .meeting { display: flex; align-items: center; gap: 14px; padding: 14px 16px; }
+  .meeting + .meeting { margin-top: 10px; }
+  .m-info { flex: 1; min-width: 0; }
+  .m-title { font-size: 14px; font-weight: 600; }
+  .m-sub { font-size: 12px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+  .b-active { background: rgba(99,102,241,.15); color: var(--accent2); }
+  .b-done { background: rgba(52,211,153,.15); color: var(--green); }
+  .b-fail { background: rgba(248,113,113,.15); color: var(--red); }
+  .b-wait { background: rgba(251,191,36,.12); color: var(--amber); }
+  .m-err { font-size: 12px; color: var(--red); margin-top: 4px; }
+  .empty { color: var(--muted); font-size: 13.5px; text-align: center; padding: 26px; }
+  .cal-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .cal-row p { font-size: 13px; color: var(--muted); }
+  a { color: var(--accent2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Solutech</div>
+    <h1>Notetaker <span>— call transcripts to your inbox</span></h1>
+  </header>
+
+  <div id="setup" class="card setup" style="display:none">
+    <h3>⚠ Setup needed</h3>
+    <ul id="setup-list"></ul>
+  </div>
+
+  <div class="card">
+    <form id="join-form">
+      <input type="url" id="url" placeholder="Paste a Google Meet or Zoom link…" required>
+      <input type="text" id="title" placeholder="Title (optional)" style="max-width:180px">
+      <button type="submit" id="join-btn">Send bot</button>
+    </form>
+    <div class="hint">The bot joins as “<span id="bot-name">Solutech Notetaker</span>” — admit it like any guest.
+      When the call ends, the transcript is emailed to <strong id="email-to">…</strong>.</div>
+    <div class="error" id="form-error"></div>
+  </div>
+
+  <div class="card cal-row" id="cal-card">
+    <p id="cal-status">Calendar auto-join: checking…</p>
+    <button id="cal-btn" style="display:none">Connect Google Calendar</button>
+  </div>
+
+  <h2>Meetings</h2>
+  <div id="meetings"><div class="empty">No meetings yet — paste a link above.</div></div>
+</div>
+
+<script>
+const STATUS = {
+  scheduled:            ['Scheduled', 'b-wait'],
+  ready:                ['Scheduled', 'b-wait'],
+  joining_call:         ['Joining…', 'b-active'],
+  in_waiting_room:      ['In waiting room — admit the bot', 'b-wait'],
+  in_call_not_recording:['In call', 'b-active'],
+  in_call_recording:    ['Recording', 'b-active'],
+  call_ended:           ['Call ended — processing', 'b-active'],
+  done:                 ['Processing transcript', 'b-active'],
+  processing_transcript:['Processing transcript', 'b-active'],
+  emailed:              ['✓ Transcript emailed', 'b-done'],
+  failed:               ['Failed', 'b-fail'],
+  no_transcript:        ['No transcript', 'b-fail'],
+};
+
+async function loadConfig() {
+  const c = await (await fetch('/api/config')).json();
+  document.getElementById('email-to').textContent = c.emailTo;
+  document.getElementById('bot-name').textContent = c.botName;
+
+  const problems = [];
+  if (!c.recallConfigured) problems.push('Add <code>RECALL_API_KEY</code> to <code>.env</code> (sign up at recall.ai) and restart.');
+  if (!c.resendConfigured) problems.push('Add <code>RESEND_API_KEY</code> to <code>.env</code> (sign up at resend.com) and restart.');
+  const setup = document.getElementById('setup');
+  if (problems.length) {
+    setup.style.display = 'block';
+    document.getElementById('setup-list').innerHTML = problems.map(p => `<li>${p}</li>`).join('');
+  } else setup.style.display = 'none';
+
+  const calStatus = document.getElementById('cal-status');
+  const calBtn = document.getElementById('cal-btn');
+  if (!c.googleConfigured) {
+    calStatus.innerHTML = 'Calendar auto-join: off — add Google OAuth keys to <code>.env</code> to enable (see README).';
+  } else if (!c.calendarConnected) {
+    calStatus.textContent = 'Calendar auto-join: ready to connect.';
+    calBtn.style.display = 'block';
+    calBtn.onclick = async () => {
+      const { url, error } = await (await fetch('/api/google/auth-url')).json();
+      if (url) window.open(url, '_blank'); else alert(error);
+    };
+  } else {
+    calStatus.textContent = '✓ Calendar auto-join is on — bots are scheduled for upcoming meetings with video links.';
+    calBtn.style.display = 'none';
+  }
+}
+
+async function loadMeetings() {
+  const meetings = await (await fetch('/api/meetings')).json();
+  const el = document.getElementById('meetings');
+  if (!meetings.length) {
+    el.innerHTML = '<div class="empty">No meetings yet — paste a link above.</div>';
+    return;
+  }
+  el.innerHTML = meetings.map(m => {
+    const [label, cls] = STATUS[m.status] || [m.status, 'b-active'];
+    const when = new Date(m.createdAt).toLocaleString();
+    const platform = m.platform === 'zoom' ? 'Zoom' : 'Google Meet';
+    return `<div class="card meeting">
+      <div class="m-info">
+        <div class="m-title">${m.title ? esc(m.title) : platform + ' call'}</div>
+        <div class="m-sub">${platform} · ${m.source === 'calendar' ? 'from calendar' : 'manual'} · ${when}</div>
+        ${m.error && (m.status === 'failed' || m.status === 'no_transcript') ? `<div class="m-err">${esc(m.error)}</div>` : ''}
+      </div>
+      <span class="badge ${cls}">${label}</span>
+    </div>`;
+  }).join('');
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+document.getElementById('join-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('join-btn');
+  const errEl = document.getElementById('form-error');
+  errEl.textContent = '';
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const res = await fetch('/api/meetings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        meeting_url: document.getElementById('url').value,
+        title: document.getElementById('title').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to send bot');
+    document.getElementById('url').value = '';
+    document.getElementById('title').value = '';
+    loadMeetings();
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Send bot';
+  }
+});
+
+loadConfig();
+loadMeetings();
+setInterval(loadMeetings, 5000);
+setInterval(loadConfig, 30000);
+</script>
+</body>
+</html>
