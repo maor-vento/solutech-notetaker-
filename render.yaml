@@ -1,0 +1,32 @@
+# Render blueprint — deploy with New + -> Blueprint -> pick this repo.
+# Render reads this file, creates the service, and prompts only for the
+# secret values (sync: false). The disk keeps data/state.json across
+# restarts/deploys; Render injects PORT automatically.
+services:
+  - type: web
+    name: solutech-notetaker
+    runtime: node
+    plan: starter          # free tier sleeps on idle, which breaks mid-call polling
+    buildCommand: npm install
+    startCommand: npm start
+    disk:
+      name: notetaker-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+    envVars:
+      - key: RECALL_API_KEY
+        sync: false        # paste from local .env
+      - key: RECALL_REGION
+        value: eu-central-1
+      - key: RESEND_API_KEY
+        sync: false        # paste from local .env
+      - key: EMAIL_FROM
+        value: Solutech Notetaker <onboarding@resend.dev>
+      - key: EMAIL_TO
+        value: maor@solutech.ai
+      - key: BOT_NAME
+        value: Solutech Notetaker
+      - key: INTEL_WEBHOOK_URL
+        value: https://solutechtt.netlify.app/.netlify/functions/notetaker-intel-background
+      - key: INTEL_SECRET
+        sync: false        # same value as Netlify's NOTETAKER_SECRET
