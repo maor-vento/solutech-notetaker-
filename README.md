@@ -49,6 +49,16 @@ paste link / calendar event
    schedules a bot for every event that has a Meet/Zoom link (joins ~1 minute
    before start; configurable via `CALENDAR_JOIN_OFFSET_MIN`).
 
+## Branding
+
+- **Portal logo** — drop your logo at `public/logo.png` and the page header
+  picks it up automatically (no config needed). Any PNG with a transparent
+  background looks best on the dark theme.
+- **In-call avatar** — drop a **16:9 JPEG** (1280x720 recommended) at
+  `public/bot-avatar.jpg` and the bot broadcasts it as its camera while in the
+  call, instead of showing a blank tile. Override the path with `BOT_AVATAR`
+  in `.env`. Restart the server after adding either file.
+
 ## Transcription notes
 
 - Default provider is `meeting_captions` — the platform's own captions, at no
